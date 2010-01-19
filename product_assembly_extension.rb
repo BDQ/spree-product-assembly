@@ -123,6 +123,8 @@ class ProductAssemblyExtension < Spree::Extension
             self.mark_units_as_sold(order, variant, quantity)
           end
         end
+
+        []#never return any out_of_stock_items as we always allow backordering
       end
 
       private
