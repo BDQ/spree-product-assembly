@@ -3,8 +3,4 @@ ru-RU:
   can_be_part: "Может входить в состав других продуктов"
   individual_sale: "Может продаваться отдельно"
   no_variants: "Нет вариантов"
-<<<<<<< HEAD
-  parts: "Parts"
-=======
   parts: "Составные части"
->>>>>>> a6dd33d46edf64add0d91874798be57fc3031f38
