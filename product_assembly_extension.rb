@@ -130,7 +130,87 @@ class ProductAssemblyExtension < Spree::Extension
         out_of_stock_items.flatten
       end
 
+      def self.adjust_units(order)
+        units_by_variant = order.inventory_units.group_by(&:variant_id)
+        out_of_stock_items = []
+
+        #check line items quantities match
+        order.line_items.each do |line_item|
+          if line_item.variant.product.assembly?
+
+            line_item.variant.product.parts.each do |variant|
+              quantity = line_item.quantity
+              unit_count = units_by_variant.key?(variant.id) ? units_by_variant[variant.id].size : 0
+
+              adjust_line(variant, quantity, unit_count, order, out_of_stock_items, units_by_variant)
+
+              #remove it from hash as it's up-to-date
+              units_by_variant.delete(variant.id)
+            end
+
+          else
+            variant = line_item.variant
+            quantity = line_item.quantity
+            unit_count = units_by_variant.key?(variant.id) ? units_by_variant[variant.id].size : 0
+
+            adjust_line(variant, quantity, unit_count, order, out_of_stock_items, units_by_variant)
+
+            #remove it from hash as it's up-to-date
+            units_by_variant.delete(variant.id)
+          end
+
+        end
+
+        #check for deleted line items (if theres anything left in units_by_variant its' extra)
+        units_by_variant.each do |variant_id, units|
+          units.each {|unit| unit.restock!}
+        end
+
+        out_of_stock_items
+      end
+
+      private
+        def self.adjust_line(variant, quantity, unit_count, order, out_of_stock_items, units_by_variant)
+          if unit_count < quantity
+            out_of_stock_items.concat create_units(order, variant, (quantity - unit_count))
+          elsif  unit_count > quantity
+            (unit_count - quantity).times do
+              inventory_unit = units_by_variant[variant.id].pop
+              inventory_unit.restock!
+            end
+          end
+        end
     end
 
+
+    LineItem.class_eval do
+      def validate
+        unless quantity && quantity >= 0
+          errors.add(:quantity, I18n.t("validation.must_be_non_negative"))
+        end
+        # avoid reload of order.inventory_units by using direct lookup
+        unless !Spree::Config[:track_inventory_levels]                        ||
+               Spree::Config[:allow_backorders]                               ||
+               order   && InventoryUnit.order_id_equals(order).first.present? ||
+               variant && quantity <= variant.on_hand
+          errors.add(:quantity, I18n.t("validation.is_too_large") + " (#{self.variant.name})")
+        end
+
+        if variant.product.assembly?
+          variant.product.parts.each do |part|
+            if shipped_count = order.shipped_units.nil? ? nil : order.shipped_units[part]
+              errors.add(:quantity, I18n.t("validation.cannot_be_less_than_shipped_units") ) if quantity < shipped_count
+            end
+          end
+        else
+          if shipped_count = order.shipped_units.nil? ? nil : order.shipped_units[variant]
+            errors.add(:quantity, I18n.t("validation.cannot_be_less_than_shipped_units") ) if quantity < shipped_count
+          end
+        end
+      end
+
+    end
   end
 end
+
+
