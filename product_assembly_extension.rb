@@ -196,6 +196,8 @@ class ProductAssemblyExtension < Spree::Extension
           errors.add(:quantity, I18n.t("validation.is_too_large") + " (#{self.variant.name})")
         end
 
+        return unless variant
+
         if variant.product.assembly?
           variant.product.parts.each do |part|
             if shipped_count = order.shipped_units.nil? ? nil : order.shipped_units[part]
